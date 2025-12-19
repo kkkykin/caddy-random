@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -24,6 +26,12 @@ func (rf *RandomFile) Provision(ctx caddy.Context) error {
 	for _, p := range rf.Include {
 		rf.includeLower = append(rf.includeLower, strings.ToLower(filepath.ToSlash(p)))
 	}
+
+	rf.cacheMu.Lock()
+	if rf.cacheCond == nil {
+		rf.cacheCond = sync.NewCond(&rf.cacheMu)
+	}
+	rf.cacheMu.Unlock()
 
 	return nil
 }
@@ -72,6 +80,76 @@ func (rf *RandomFile) resolveTargetDir(root string, _ *http.Request) (string, er
 }
 
 func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
+	candidates, err := rf.getCandidates(dir)
+	if err != nil {
+		return "", err
+	}
+	if len(candidates) == 0 {
+		return "", errNoMatchingFiles
+	}
+
+	idx, err := cryptoRandIndex(len(candidates))
+	if err != nil {
+		return "", err
+	}
+	return candidates[idx], nil
+}
+
+func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
+	ttl := time.Duration(rf.Cache)
+	if ttl <= 0 {
+		return rf.scanCandidates(dir)
+	}
+
+	now := time.Now()
+
+	rf.cacheMu.Lock()
+	if rf.cacheCond == nil {
+		rf.cacheCond = sync.NewCond(&rf.cacheMu)
+	}
+
+	if rf.cacheReady && rf.cacheDir == dir && now.Before(rf.cacheExpiresAt) {
+		candidates := rf.cacheCandidates
+		err := rf.cacheErr
+		rf.cacheMu.Unlock()
+		return candidates, err
+	}
+
+	if rf.cacheRefreshing && rf.cacheDir == dir {
+		for rf.cacheRefreshing && rf.cacheDir == dir {
+			rf.cacheCond.Wait()
+		}
+
+		now = time.Now()
+		if rf.cacheReady && rf.cacheDir == dir && now.Before(rf.cacheExpiresAt) {
+			candidates := rf.cacheCandidates
+			err := rf.cacheErr
+			rf.cacheMu.Unlock()
+			return candidates, err
+		}
+	}
+
+	rf.cacheRefreshing = true
+	rf.cacheDir = dir
+	rf.cacheMu.Unlock()
+
+	candidates, err := rf.scanCandidates(dir)
+	expiresAt := time.Now().Add(ttl)
+
+	rf.cacheMu.Lock()
+	rf.cacheDir = dir
+	rf.cacheCandidates = candidates
+	rf.cacheErr = err
+	rf.cacheExpiresAt = expiresAt
+	rf.cacheReady = true
+	rf.cacheRefreshing = false
+	rf.cacheCond.Broadcast()
+	rf.cacheMu.Unlock()
+
+	return candidates, err
+}
+
+func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 	var candidates []string
 
 	if rf.Recursive {
@@ -107,12 +185,12 @@ func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
 		}
 
 		if err := filepath.WalkDir(dir, walkFn); err != nil {
-			return "", err
+			return nil, err
 		}
 	} else {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		for _, entry := range entries {
@@ -138,14 +216,9 @@ func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
 	}
 
 	if len(candidates) == 0 {
-		return "", errNoMatchingFiles
+		return nil, errNoMatchingFiles
 	}
-
-	idx, err := cryptoRandIndex(len(candidates))
-	if err != nil {
-		return "", err
-	}
-	return candidates[idx], nil
+	return candidates, nil
 }
 
 func (rf *RandomFile) matchInclude(relPath string) bool {

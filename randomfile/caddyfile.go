@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
@@ -30,6 +31,18 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 				rf.Include = append(rf.Include, args...)
 			case "recursive":
 				rf.Recursive = true
+				if h.NextArg() {
+					return nil, h.ArgErr()
+				}
+			case "cache":
+				if !h.NextArg() {
+					return nil, h.ArgErr()
+				}
+				dur, err := caddy.ParseDuration(h.Val())
+				if err != nil {
+					return nil, err
+				}
+				rf.Cache = caddy.Duration(dur)
 				if h.NextArg() {
 					return nil, h.ArgErr()
 				}

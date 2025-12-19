@@ -1,6 +1,9 @@
 package randomfile
 
 import (
+	"sync"
+	"time"
+
 	"go.uber.org/zap"
 
 	"github.com/caddyserver/caddy/v2"
@@ -33,9 +36,25 @@ type RandomFile struct {
 	// Default is false to preserve existing behavior.
 	Recursive bool `json:"recursive,omitempty"`
 
+	// Cache is an optional cache TTL for the candidate file list. When set, the
+	// directory scan is performed at most once per TTL.
+	//
+	// Default is 0 (disabled).
+	Cache caddy.Duration `json:"cache,omitempty"`
+
 	logger *zap.Logger
 
 	includeLower []string
+
+	cacheMu   sync.Mutex
+	cacheCond *sync.Cond
+
+	cacheDir        string
+	cacheExpiresAt  time.Time
+	cacheCandidates []string
+	cacheErr        error
+	cacheReady      bool
+	cacheRefreshing bool
 }
 
 func (RandomFile) CaddyModule() caddy.ModuleInfo {

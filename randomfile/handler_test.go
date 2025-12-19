@@ -5,13 +5,16 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/caddyserver/caddy/v2"
 )
 
 func TestMatchInclude_CaseInsensitive(t *testing.T) {
 	rf := &RandomFile{Include: []string{"*.JPG"}}
 	rf.includeLower = []string{"*.jpg"}
-
 
 	if !rf.matchInclude("a.jpg") {
 		t.Fatalf("expected match")
@@ -57,6 +60,9 @@ func TestPickRandomFile_Recursive_FindsNested(t *testing.T) {
 
 	rf := &RandomFile{Root: root, Recursive: true, Include: []string{"*.jpg"}}
 	rf.includeLower = []string{"*.jpg"}
+	// Ensure cache condition variable is initialized for tests that call pickRandomFile directly.
+	rf.cacheCond = sync.NewCond(&rf.cacheMu)
+	rf.cacheReady = true
 
 	selected, err := rf.pickRandomFile(root)
 	if err != nil {
@@ -64,5 +70,51 @@ func TestPickRandomFile_Recursive_FindsNested(t *testing.T) {
 	}
 	if selected != nestedFile {
 		t.Fatalf("expected %q, got %q", nestedFile, selected)
+	}
+}
+
+func TestPickRandomFile_Cache_TTL(t *testing.T) {
+	root := t.TempDir()
+
+	file1 := filepath.Join(root, "a.jpg")
+	if err := os.WriteFile(file1, []byte("a"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rf := &RandomFile{Root: root, Include: []string{"*.jpg"}, Cache: caddy.Duration(200 * time.Millisecond)}
+	rf.includeLower = []string{"*.jpg"}
+	rf.cacheCond = sync.NewCond(&rf.cacheMu)
+	rf.cacheReady = true
+
+	selected1, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile#1: %v", err)
+	}
+	if selected1 != file1 {
+		t.Fatalf("expected %q, got %q", file1, selected1)
+	}
+
+	file2 := filepath.Join(root, "b.jpg")
+	if err := os.WriteFile(file2, []byte("b"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	selected2, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile#2: %v", err)
+	}
+	// Should still come from cached list (only a.jpg) since TTL not expired.
+	if selected2 != file1 {
+		t.Fatalf("expected cached %q, got %q", file1, selected2)
+	}
+
+	time.Sleep(250 * time.Millisecond)
+
+	selected3, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile#3: %v", err)
+	}
+	if selected3 != file1 && selected3 != file2 {
+		t.Fatalf("expected %q or %q, got %q", file1, file2, selected3)
 	}
 }
