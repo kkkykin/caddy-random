@@ -1,5 +1,5 @@
 package caddyrandom
 
 import (
-	_ "example.com/caddy-random/randomfile"
+	_ "github.com/kkkykin/caddy-random/randomfile"
 )

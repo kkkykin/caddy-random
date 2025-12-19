@@ -1,4 +1,4 @@
-module example.com/caddy-random
+module github.com/kkkykin/caddy-random
 
 go 1.25.4
 

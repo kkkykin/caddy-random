@@ -51,7 +51,7 @@ The project emphasizes safety and performance: paths are normalized to avoid tra
 ### Installation
 
 ```bash
-git clone https://example.com/caddy-random.git
+git clone https://github.com/kkkykin/caddy-random.git
 cd caddy-random
 # Optional reproducible dev shell
 defaultShell="nix develop --command"
@@ -63,7 +63,7 @@ $defaultShell bash -lc "go test ./..."
 ```bash
 # Build a custom Caddy binary that embeds the module
 nix develop --command bash -lc \
-  "xcaddy build --with example.com/caddy-random=./"
+  "xcaddy build --with github.com/kkkykin/caddy-random=./"
 
 # Run the provided sample configuration
 ./caddy run --config Caddyfile.example
@@ -74,7 +74,7 @@ nix develop --command bash -lc \
 ### Available Scripts / Commands
 
 - `go test ./...` – Run unit tests
-- `xcaddy build --with example.com/caddy-random=./` – Build Caddy with this module
+- `xcaddy build --with github.com/kkkykin/caddy-random=./` – Build Caddy with this module
 - `nix develop --command <cmd>` – Execute commands inside the dev shell (Go, Caddy, xcaddy available)
 
 ### Development Workflow
@@ -82,7 +82,7 @@ nix develop --command bash -lc \
 1. Enter the dev shell (`nix develop`) or ensure Go + xcaddy are installed locally.
 2. Update Go sources under `randomfile/`; keep formatting with `gofmt`.
 3. Run `go test ./...` before submitting changes.
-4. Build a custom binary via `xcaddy build --with example.com/caddy-random=./` to validate end-to-end.
+4. Build a custom binary via `xcaddy build --with github.com/kkkykin/caddy-random=./` to validate end-to-end.
 
 ## Configuration
 
@@ -109,7 +109,7 @@ nix develop --command bash -lc \
 
 - Format code with `gofmt` and keep tests updated.
 - Open pull requests with clear descriptions and ensure `go test ./...` passes.
-- Use `xcaddy build --with example.com/caddy-random=./` to confirm integration before submitting.
+- Use `xcaddy build --with github.com/kkkykin/caddy-random=./` to confirm integration before submitting.
 
 ## License
 

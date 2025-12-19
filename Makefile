@@ -12,7 +12,7 @@ test:
 	$(NIX_DEVELOP) "$(CACHE_ENV) go test ./..."
 
 build:
-	$(NIX_DEVELOP) "$(CACHE_ENV) xcaddy build --with example.com/caddy-random=./"
+	$(NIX_DEVELOP) "$(CACHE_ENV) xcaddy build --with github.com/kkkykin/caddy-random=./"
 
 tidy:
 	$(NIX_DEVELOP) "$(CACHE_ENV) go mod tidy"
