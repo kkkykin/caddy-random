@@ -84,6 +84,8 @@ func (rf *RandomFile) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 
 var errNoMatchingFiles = errors.New("no matching files")
 
+const debugCandidateSampleLimit = 50
+
 func (rf *RandomFile) resolveTargetDir(root string, _ *http.Request) (string, error) {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
@@ -105,7 +107,16 @@ func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return candidates[idx], nil
+	selected := candidates[idx]
+	if rf.logger != nil {
+		rf.logger.Debug(
+			"random_file selected",
+			zap.String("dir", dir),
+			zap.String("file", selected),
+			zap.Int("candidates_total", len(candidates)),
+		)
+	}
+	return selected, nil
 }
 
 func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
@@ -240,7 +251,34 @@ func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 	}
 
 	if len(candidates) == 0 {
+		if rf.logger != nil {
+			rf.logger.Debug(
+				"random_file candidates",
+				zap.String("dir", dir),
+				zap.Int("candidates_total", 0),
+				zap.Int("candidates_sample_size", 0),
+				zap.Bool("candidates_truncated", false),
+				zap.Strings("candidates_sample", nil),
+			)
+		}
 		return nil, errNoMatchingFiles
+	}
+
+	if rf.logger != nil {
+		sample := candidates
+		truncated := false
+		if len(sample) > debugCandidateSampleLimit {
+			sample = sample[:debugCandidateSampleLimit]
+			truncated = true
+		}
+		rf.logger.Debug(
+			"random_file candidates",
+			zap.String("dir", dir),
+			zap.Int("candidates_total", len(candidates)),
+			zap.Int("candidates_sample_size", len(sample)),
+			zap.Bool("candidates_truncated", truncated),
+			zap.Strings("candidates_sample", sample),
+		)
 	}
 	return candidates, nil
 }
