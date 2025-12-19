@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -64,93 +63,12 @@ func (rf *RandomFile) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 
 var errNoMatchingFiles = errors.New("no matching files")
 
-func (rf *RandomFile) resolveTargetDir(root string, r *http.Request) (string, error) {
+func (rf *RandomFile) resolveTargetDir(root string, _ *http.Request) (string, error) {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("resolve root: %w", err)
 	}
-
-	subdir := ""
-	if rf.UseURLPathSubdir {
-		// Use URL path as subdir. Strip leading slash.
-		p := strings.TrimPrefix(r.URL.Path, "/")
-		p = strings.TrimSuffix(p, "/")
-		p = strings.TrimSpace(p)
-		subdir = p
-	}
-
-	if subdir == "" {
-		return rootAbs, nil
-	}
-
-	rel, err := sanitizeRelativeSubdir(subdir)
-	if err != nil {
-		return "", err
-	}
-
-	candidate := filepath.Join(rootAbs, filepath.FromSlash(rel))
-	candidateAbs, err := filepath.Abs(candidate)
-	if err != nil {
-		return "", fmt.Errorf("resolve subdir: %w", err)
-	}
-
-	within, err := isWithinDir(rootAbs, candidateAbs)
-	if err != nil {
-		return "", err
-	}
-	if !within {
-		return "", fmt.Errorf("subdir escapes root")
-	}
-
-	return candidateAbs, nil
-}
-
-func sanitizeRelativeSubdir(subdir string) (string, error) {
-	s := strings.TrimSpace(subdir)
-	if s == "" {
-		return "", fmt.Errorf("subdir is empty")
-	}
-
-	// Use slash paths for sanitization.
-	s = filepath.ToSlash(s)
-
-	// Reject absolute paths.
-	if strings.HasPrefix(s, "/") {
-		return "", fmt.Errorf("subdir must be relative")
-	}
-
-	// Clean using path (always slash-separated).
-	clean := path.Clean(s)
-	if clean == "." || clean == "" {
-		return "", fmt.Errorf("subdir is empty")
-	}
-	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", fmt.Errorf("subdir must not traverse up")
-	}
-
-	// Also reject any remaining '..' segments.
-	for _, seg := range strings.Split(clean, "/") {
-		if seg == ".." {
-			return "", fmt.Errorf("subdir must not traverse up")
-		}
-	}
-
-	return clean, nil
-}
-
-func isWithinDir(rootAbs, candidateAbs string) (bool, error) {
-	rel, err := filepath.Rel(rootAbs, candidateAbs)
-	if err != nil {
-		return false, fmt.Errorf("rel check: %w", err)
-	}
-	rel = filepath.ToSlash(rel)
-	if rel == "." {
-		return true, nil
-	}
-	if strings.HasPrefix(rel, "../") || rel == ".." {
-		return false, nil
-	}
-	return true, nil
+	return rootAbs, nil
 }
 
 func (rf *RandomFile) pickRandomFile(dir string) (string, error) {

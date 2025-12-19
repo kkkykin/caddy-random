@@ -3,7 +3,6 @@ package randomfile
 import (
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -11,6 +10,7 @@ import (
 func TestMatchInclude_CaseInsensitive(t *testing.T) {
 	rf := &RandomFile{Include: []string{"*.JPG"}}
 	rf.includeLower = []string{"*.jpg"}
+
 
 	if !rf.matchInclude("a.jpg") {
 		t.Fatalf("expected match")
@@ -23,45 +23,11 @@ func TestMatchInclude_CaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestSanitizeRelativeSubdir(t *testing.T) {
-	cases := []struct {
-		in      string
-		ok      bool
-		expected string
-	}{
-		{in: "foo", ok: true, expected: "foo"},
-		{in: "foo/bar", ok: true, expected: "foo/bar"},
-		{in: "foo/../bar", ok: true, expected: "bar"},
-		{in: "../etc", ok: false},
-		{in: "/abs", ok: false},
-		{in: "..", ok: false},
-	}
-
-	for _, tc := range cases {
-		got, err := sanitizeRelativeSubdir(tc.in)
-		if tc.ok {
-			if err != nil {
-				t.Fatalf("%q: expected ok, got err=%v", tc.in, err)
-			}
-			if got != tc.expected {
-				t.Fatalf("%q: expected %q, got %q", tc.in, tc.expected, got)
-			}
-		} else {
-			if err == nil {
-				t.Fatalf("%q: expected error", tc.in)
-			}
-		}
-	}
-}
-
-func TestResolveTargetDir_URLPathSubdir(t *testing.T) {
+func TestResolveTargetDir_ReturnsRoot(t *testing.T) {
 	root := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(root, "a"), 0o755)
-	_ = os.MkdirAll(filepath.Join(root, "b"), 0o755)
+	rf := &RandomFile{Root: root}
 
-	rf := &RandomFile{Root: root, UseURLPathSubdir: true}
-
-	u := &url.URL{Path: "/b"}
+	u := &url.URL{Path: "/anything"}
 	r := &http.Request{URL: u}
 
 	dir, err := rf.resolveTargetDir(root, r)
@@ -69,21 +35,8 @@ func TestResolveTargetDir_URLPathSubdir(t *testing.T) {
 		t.Fatalf("resolveTargetDir: %v", err)
 	}
 
-	want, _ := filepath.Abs(filepath.Join(root, "b"))
+	want, _ := filepath.Abs(root)
 	if dir != want {
 		t.Fatalf("expected %q, got %q", want, dir)
-	}
-}
-
-func TestResolveTargetDir_PreventTraversal(t *testing.T) {
-	root := t.TempDir()
-	rf := &RandomFile{Root: root, UseURLPathSubdir: true}
-
-	u := &url.URL{Path: "/../etc"}
-	r := &http.Request{URL: u}
-
-	_, err := rf.resolveTargetDir(root, r)
-	if err == nil {
-		t.Fatalf("expected error")
 	}
 }

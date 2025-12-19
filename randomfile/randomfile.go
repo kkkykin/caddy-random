@@ -28,11 +28,6 @@ type RandomFile struct {
 	// Matching is case-insensitive.
 	Include []string `json:"include,omitempty"`
 
-	// UseURLPathSubdir controls whether the request URL path can be used to
-	// determine the subdirectory under Root.
-	//
-	// Example: /foo/bar will select Root/foo/bar
-	UseURLPathSubdir bool `json:"use_url_path_subdir,omitempty"`
 
 	logger *zap.Logger
 
