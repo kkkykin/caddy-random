@@ -30,9 +30,6 @@ func (rf *RandomFile) Provision(ctx caddy.Context) error {
 }
 
 func (rf *RandomFile) Validate() error {
-	if rf.SubdirParam == "" {
-		return fmt.Errorf("subdir_param cannot be empty")
-	}
 	return nil
 }
 
@@ -74,11 +71,7 @@ func (rf *RandomFile) resolveTargetDir(root string, r *http.Request) (string, er
 	}
 
 	subdir := ""
-	if rf.SubdirParam != "" {
-		subdir = r.URL.Query().Get(rf.SubdirParam)
-	}
-
-	if subdir == "" && rf.UseURLPathSubdir {
+	if rf.UseURLPathSubdir {
 		// Use URL path as subdir. Strip leading slash.
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		p = strings.TrimSuffix(p, "/")

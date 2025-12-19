@@ -11,9 +11,6 @@ import (
 func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var rf RandomFile
 
-	// Defaults.
-	rf.SubdirParam = "subdir"
-
 	for h.Next() {
 		for h.NextBlock(0) {
 			switch h.Val() {
@@ -31,14 +28,6 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 					return nil, h.ArgErr()
 				}
 				rf.Include = append(rf.Include, args...)
-			case "subdir_param":
-				if !h.NextArg() {
-					return nil, h.ArgErr()
-				}
-				rf.SubdirParam = h.Val()
-				if h.NextArg() {
-					return nil, h.ArgErr()
-				}
 			case "use_url_path_subdir":
 				rf.UseURLPathSubdir = true
 				if h.NextArg() {

@@ -54,17 +54,14 @@ func TestSanitizeRelativeSubdir(t *testing.T) {
 	}
 }
 
-func TestResolveTargetDir_QueryParamOverridesURLPath(t *testing.T) {
+func TestResolveTargetDir_URLPathSubdir(t *testing.T) {
 	root := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(root, "a"), 0o755)
 	_ = os.MkdirAll(filepath.Join(root, "b"), 0o755)
 
-	rf := &RandomFile{Root: root, SubdirParam: "subdir", UseURLPathSubdir: true}
+	rf := &RandomFile{Root: root, UseURLPathSubdir: true}
 
-	u := &url.URL{Path: "/a"}
-	q := u.Query()
-	q.Set("subdir", "b")
-	u.RawQuery = q.Encode()
+	u := &url.URL{Path: "/b"}
 	r := &http.Request{URL: u}
 
 	dir, err := rf.resolveTargetDir(root, r)
@@ -80,12 +77,9 @@ func TestResolveTargetDir_QueryParamOverridesURLPath(t *testing.T) {
 
 func TestResolveTargetDir_PreventTraversal(t *testing.T) {
 	root := t.TempDir()
-	rf := &RandomFile{Root: root, SubdirParam: "subdir"}
+	rf := &RandomFile{Root: root, UseURLPathSubdir: true}
 
-	u := &url.URL{Path: "/"}
-	q := u.Query()
-	q.Set("subdir", "../etc")
-	u.RawQuery = q.Encode()
+	u := &url.URL{Path: "/../etc"}
 	r := &http.Request{URL: u}
 
 	_, err := rf.resolveTargetDir(root, r)
