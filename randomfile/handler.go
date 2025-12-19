@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"go.uber.org/zap"
 
 	"github.com/caddyserver/caddy/v2"
@@ -24,6 +25,7 @@ func (rf *RandomFile) Provision(ctx caddy.Context) error {
 	rf.logger = ctx.Logger(rf)
 
 	rf.initIncludeLower()
+	rf.initExcludeLower()
 
 	rf.cacheMu.Lock()
 	if rf.cacheCond == nil {
@@ -42,11 +44,14 @@ func (rf *RandomFile) Provision(ctx caddy.Context) error {
 }
 
 func (rf *RandomFile) initIncludeLower() {
-	patterns := make([]string, 0, len(rf.Include))
-	for _, p := range rf.Include {
-		patterns = append(patterns, strings.ToLower(filepath.ToSlash(p)))
-	}
-	rf.includeLower = patterns
+	rf.includeLower = normalizePatterns(rf.Include)
+}
+
+func (rf *RandomFile) initExcludeLower() {
+	combined := make([]string, 0, len(rf.Exclude)+len(rf.ExcludeDir))
+	combined = append(combined, rf.Exclude...)
+	combined = append(combined, rf.ExcludeDir...)
+	rf.excludeLower = normalizePatterns(combined)
 }
 
 func (rf *RandomFile) Validate() error {
@@ -181,19 +186,32 @@ func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
 
 func (rf *RandomFile) candidateCacheKey(dir string) string {
 	inc := strings.Join(rf.includePatterns(), "\x00")
-	return fmt.Sprintf("dir=%s\x1frecursive=%t\x1finclude=%s", dir, rf.Recursive, inc)
+	exc := strings.Join(rf.excludePatterns(), "\x00")
+	return fmt.Sprintf("dir=%s\x1frecursive=%t\x1finclude=%s\x1fexclude=%s", dir, rf.shouldRecurse(), inc, exc)
 }
 
 func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 	var candidates []string
 
-	if rf.Recursive {
+	if rf.shouldRecurse() {
 		walkFn := func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				// Ignore entries we can't access; keep scanning others.
 				return nil
 			}
 			if d.IsDir() {
+				if path == dir {
+					return nil
+				}
+				rel, err := filepath.Rel(dir, path)
+				if err != nil {
+					return nil
+				}
+				rel = filepath.ToSlash(rel)
+				name := filepath.Base(rel)
+				if rf.matchExcludeDir(rel, name) {
+					return fs.SkipDir
+				}
 				return nil
 			}
 
@@ -211,6 +229,9 @@ func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 			}
 			rel = filepath.ToSlash(rel)
 			name := filepath.Base(rel)
+			if rf.matchExclude(rel) || rf.matchExclude(name) {
+				return nil
+			}
 			if !rf.matchInclude(rel) && !rf.matchInclude(name) {
 				return nil
 			}
@@ -243,6 +264,9 @@ func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 
 			name := entry.Name()
 			rel := filepath.ToSlash(name)
+			if rf.matchExclude(rel) {
+				continue
+			}
 			if !rf.matchInclude(rel) {
 				continue
 			}
@@ -288,11 +312,79 @@ func (rf *RandomFile) matchInclude(relPath string) bool {
 	if len(patterns) == 0 {
 		return true
 	}
+	return matchAnyPattern(patterns, relPath)
+}
 
-	name := strings.ToLower(relPath)
+func (rf *RandomFile) matchExclude(relPath string) bool {
+	patterns := rf.excludePatterns()
+	if len(patterns) == 0 {
+		return false
+	}
+	return matchAnyPattern(patterns, relPath)
+}
+
+func (rf *RandomFile) includePatterns() []string {
+	if len(rf.Include) == 0 {
+		return nil
+	}
+	if len(rf.includeLower) != 0 {
+		return rf.includeLower
+	}
+	return normalizePatterns(rf.Include)
+}
+
+func (rf *RandomFile) excludePatterns() []string {
+	if len(rf.Exclude) == 0 && len(rf.ExcludeDir) == 0 {
+		return nil
+	}
+	if len(rf.excludeLower) != 0 {
+		return rf.excludeLower
+	}
+	combined := make([]string, 0, len(rf.Exclude)+len(rf.ExcludeDir))
+	combined = append(combined, rf.Exclude...)
+	combined = append(combined, rf.ExcludeDir...)
+	return normalizePatterns(combined)
+}
+
+func (rf *RandomFile) matchExcludeDir(rel, name string) bool {
+	patterns := rf.excludePatterns()
+	if len(patterns) == 0 {
+		return false
+	}
+	if matchAnyPattern(patterns, rel) || matchAnyPattern(patterns, name) {
+		return true
+	}
+	// Match patterns that target descendants (e.g. **/dir/**) by testing
+	// a synthetic child path.
+	return matchAnyPattern(patterns, filepath.ToSlash(rel)+"/__dir__")
+}
+
+func (rf *RandomFile) shouldRecurse() bool {
+	if rf.Recursive {
+		return true
+	}
+	for _, pattern := range rf.includePatterns() {
+		if patternRequiresRecursive(pattern) {
+			return true
+		}
+	}
+	for _, pattern := range rf.excludePatterns() {
+		if patternRequiresRecursive(pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func patternRequiresRecursive(pattern string) bool {
+	return strings.Contains(pattern, "/") || strings.Contains(pattern, "**")
+}
+
+func matchAnyPattern(patterns []string, path string) bool {
+	name := strings.ToLower(path)
 	name = filepath.ToSlash(name)
 	for _, pattern := range patterns {
-		ok, err := filepath.Match(pattern, name)
+		ok, err := doublestar.Match(pattern, name)
 		if err != nil {
 			// Invalid pattern: ignore it and continue (treat as non-match).
 			continue
@@ -304,19 +396,15 @@ func (rf *RandomFile) matchInclude(relPath string) bool {
 	return false
 }
 
-func (rf *RandomFile) includePatterns() []string {
-	if len(rf.Include) == 0 {
+func normalizePatterns(patterns []string) []string {
+	if len(patterns) == 0 {
 		return nil
 	}
-	if len(rf.includeLower) != 0 {
-		return rf.includeLower
+	normalized := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		normalized = append(normalized, strings.ToLower(filepath.ToSlash(p)))
 	}
-
-	patterns := make([]string, 0, len(rf.Include))
-	for _, p := range rf.Include {
-		patterns = append(patterns, strings.ToLower(filepath.ToSlash(p)))
-	}
-	return patterns
+	return normalized
 }
 
 func cryptoRandIndex(n int) (int, error) {

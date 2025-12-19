@@ -31,6 +31,14 @@ type RandomFile struct {
 	// Matching is case-insensitive.
 	Include []string `json:"include,omitempty"`
 
+	// Exclude is a list of glob patterns used to skip files or directories.
+	//
+	// Matching is case-insensitive.
+	Exclude []string `json:"exclude,omitempty"`
+
+	// ExcludeDir is deprecated. Use Exclude instead. Patterns are combined.
+	ExcludeDir []string `json:"exclude_dir,omitempty"`
+
 	// Recursive enables scanning subdirectories under Root.
 	//
 	// Default is false to preserve existing behavior.
@@ -45,6 +53,7 @@ type RandomFile struct {
 	logger *zap.Logger
 
 	includeLower []string
+	excludeLower []string
 
 	cacheMu   sync.Mutex
 	cacheCond *sync.Cond

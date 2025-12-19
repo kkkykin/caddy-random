@@ -29,6 +29,18 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 					return nil, h.ArgErr()
 				}
 				rf.Include = append(rf.Include, args...)
+			case "exclude":
+				args := h.RemainingArgs()
+				if len(args) == 0 {
+					return nil, h.ArgErr()
+				}
+				rf.Exclude = append(rf.Exclude, args...)
+			case "exclude_dir":
+				args := h.RemainingArgs()
+				if len(args) == 0 {
+					return nil, h.ArgErr()
+				}
+				rf.ExcludeDir = append(rf.ExcludeDir, args...)
 			case "recursive":
 				rf.Recursive = true
 				if h.NextArg() {

@@ -1,5 +1,7 @@
 {
 	order random_file before reverse_proxy
+    # admin off
+    # debug
 }
 
 :8080 {
@@ -9,8 +11,8 @@
 	handle_path /wallpaper/* {
 		random_file {
 			root /mnt/mediadata/wallpaper
-			include *.jpg
-			recursive
+			include **/*.jpg **/*.jpeg **/*.png
+			exclude nsfw/*
 			cache 10s
 		}
 	}

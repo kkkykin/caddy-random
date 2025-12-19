@@ -72,6 +72,106 @@ func TestPickRandomFile_Recursive_FindsNested(t *testing.T) {
 	}
 }
 
+func TestPickRandomFile_Recursive_ExcludeDir(t *testing.T) {
+	root := t.TempDir()
+
+	skipDir := filepath.Join(root, "skip")
+	if err := os.MkdirAll(skipDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	skipFile := filepath.Join(skipDir, "x.jpg")
+	if err := os.WriteFile(skipFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	keepFile := filepath.Join(root, "ok.jpg")
+	if err := os.WriteFile(keepFile, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rf := &RandomFile{
+		Root:       root,
+		Recursive:  true,
+		Include:    []string{"*.jpg"},
+		ExcludeDir: []string{"skip"},
+	}
+	rf.initIncludeLower()
+	rf.initExcludeLower()
+	rf.cacheCond = sync.NewCond(&rf.cacheMu)
+
+	selected, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile: %v", err)
+	}
+	if selected != keepFile {
+		t.Fatalf("expected %q, got %q", keepFile, selected)
+	}
+}
+
+func TestPickRandomFile_AutoRecursiveWithSlashPattern(t *testing.T) {
+	root := t.TempDir()
+
+	nestedDir := filepath.Join(root, "sub")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	nestedFile := filepath.Join(nestedDir, "x.jpg")
+	if err := os.WriteFile(nestedFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rf := &RandomFile{Root: root, Include: []string{"sub/*.jpg"}}
+	rf.initIncludeLower()
+	rf.cacheCond = sync.NewCond(&rf.cacheMu)
+
+	selected, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile: %v", err)
+	}
+	if selected != nestedFile {
+		t.Fatalf("expected %q, got %q", nestedFile, selected)
+	}
+}
+
+func TestPickRandomFile_ExcludeGlobstar(t *testing.T) {
+	root := t.TempDir()
+
+	skipDir := filepath.Join(root, "a", "skip")
+	if err := os.MkdirAll(skipDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	skipFile := filepath.Join(skipDir, "x.jpg")
+	if err := os.WriteFile(skipFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	keepDir := filepath.Join(root, "a", "keep")
+	if err := os.MkdirAll(keepDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	keepFile := filepath.Join(keepDir, "ok.jpg")
+	if err := os.WriteFile(keepFile, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rf := &RandomFile{Root: root, Include: []string{"**/*.jpg"}, Exclude: []string{"**/skip/**"}}
+	rf.initIncludeLower()
+	rf.initExcludeLower()
+	rf.cacheCond = sync.NewCond(&rf.cacheMu)
+
+	selected, err := rf.pickRandomFile(root)
+	if err != nil {
+		t.Fatalf("pickRandomFile: %v", err)
+	}
+	if selected != keepFile {
+		t.Fatalf("expected %q, got %q", keepFile, selected)
+	}
+}
+
 func TestPickRandomFile_Cache_TTL(t *testing.T) {
 	root := t.TempDir()
 
