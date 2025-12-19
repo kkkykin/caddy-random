@@ -46,10 +46,7 @@
               git
             ];
 
-            shellHook = ''
-              echo "- Build Caddy with your local module: xcaddy build --with github.com/your/module=." 
-              echo "- Run tests: go test ./"
-            '';
+            GOPROXY = "https://goproxy.cn,direct";
           };
         });
 
