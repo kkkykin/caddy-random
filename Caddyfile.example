@@ -1,0 +1,22 @@
+{
+	order random_file before reverse_proxy
+}
+
+:8080 {
+	# 示例：访问 /wallpaper 或 /wallpaper/anything 都会进入该 handler
+	# - 默认从 root 目录中随机选一个文件返回
+	# - include 使用 glob，且大小写不敏感
+	handle_path /wallpaper/* {
+		random_file {
+			root /mnt/mediadata/wallpaper
+			include *.jpg
+			recursive
+			cache 10s
+		}
+	}
+
+	# 健康检查
+	handle /health {
+		respond "ok" 200
+	}
+}

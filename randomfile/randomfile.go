@@ -49,7 +49,7 @@ type RandomFile struct {
 	cacheMu   sync.Mutex
 	cacheCond *sync.Cond
 
-	cacheDir        string
+	cacheKey        string
 	cacheExpiresAt  time.Time
 	cacheCandidates []string
 	cacheErr        error

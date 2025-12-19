@@ -23,17 +23,29 @@ import (
 func (rf *RandomFile) Provision(ctx caddy.Context) error {
 	rf.logger = ctx.Logger(rf)
 
-	for _, p := range rf.Include {
-		rf.includeLower = append(rf.includeLower, strings.ToLower(filepath.ToSlash(p)))
-	}
+	rf.initIncludeLower()
 
 	rf.cacheMu.Lock()
 	if rf.cacheCond == nil {
 		rf.cacheCond = sync.NewCond(&rf.cacheMu)
 	}
+	// Reset cache state in case this module instance is re-provisioned.
+	rf.cacheKey = ""
+	rf.cacheExpiresAt = time.Time{}
+	rf.cacheCandidates = nil
+	rf.cacheErr = nil
+	rf.cacheReady = false
+	rf.cacheRefreshing = false
 	rf.cacheMu.Unlock()
 
 	return nil
+}
+
+func (rf *RandomFile) initIncludeLower() {
+	rf.includeLower = rf.includeLower[:0]
+	for _, p := range rf.Include {
+		rf.includeLower = append(rf.includeLower, strings.ToLower(filepath.ToSlash(p)))
+	}
 }
 
 func (rf *RandomFile) Validate() error {
@@ -96,32 +108,42 @@ func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
 }
 
 func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
+	// Provision() sets includeLower and cacheCond, but callers might invoke methods
+	// directly in tests.
+	if rf.cacheCond == nil {
+		rf.cacheMu.Lock()
+		if rf.cacheCond == nil {
+			rf.cacheCond = sync.NewCond(&rf.cacheMu)
+		}
+		rf.cacheMu.Unlock()
+	}
+	if len(rf.includeLower) == 0 && len(rf.Include) > 0 {
+		rf.initIncludeLower()
+	}
+
 	ttl := time.Duration(rf.Cache)
 	if ttl <= 0 {
 		return rf.scanCandidates(dir)
 	}
 
+	key := rf.candidateCacheKey(dir)
 	now := time.Now()
 
 	rf.cacheMu.Lock()
-	if rf.cacheCond == nil {
-		rf.cacheCond = sync.NewCond(&rf.cacheMu)
-	}
-
-	if rf.cacheReady && rf.cacheDir == dir && now.Before(rf.cacheExpiresAt) {
+	if rf.cacheReady && rf.cacheKey == key && now.Before(rf.cacheExpiresAt) {
 		candidates := rf.cacheCandidates
 		err := rf.cacheErr
 		rf.cacheMu.Unlock()
 		return candidates, err
 	}
 
-	if rf.cacheRefreshing && rf.cacheDir == dir {
-		for rf.cacheRefreshing && rf.cacheDir == dir {
+	if rf.cacheRefreshing && rf.cacheKey == key {
+		for rf.cacheRefreshing && rf.cacheKey == key {
 			rf.cacheCond.Wait()
 		}
 
 		now = time.Now()
-		if rf.cacheReady && rf.cacheDir == dir && now.Before(rf.cacheExpiresAt) {
+		if rf.cacheReady && rf.cacheKey == key && now.Before(rf.cacheExpiresAt) {
 			candidates := rf.cacheCandidates
 			err := rf.cacheErr
 			rf.cacheMu.Unlock()
@@ -130,14 +152,14 @@ func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
 	}
 
 	rf.cacheRefreshing = true
-	rf.cacheDir = dir
+	rf.cacheKey = key
 	rf.cacheMu.Unlock()
 
 	candidates, err := rf.scanCandidates(dir)
 	expiresAt := time.Now().Add(ttl)
 
 	rf.cacheMu.Lock()
-	rf.cacheDir = dir
+	rf.cacheKey = key
 	rf.cacheCandidates = candidates
 	rf.cacheErr = err
 	rf.cacheExpiresAt = expiresAt
@@ -147,6 +169,11 @@ func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
 	rf.cacheMu.Unlock()
 
 	return candidates, err
+}
+
+func (rf *RandomFile) candidateCacheKey(dir string) string {
+	inc := strings.Join(rf.includeLower, "\x00")
+	return fmt.Sprintf("dir=%s\x1frecursive=%t\x1finclude=%s", dir, rf.Recursive, inc)
 }
 
 func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {

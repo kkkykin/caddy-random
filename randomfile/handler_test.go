@@ -62,7 +62,6 @@ func TestPickRandomFile_Recursive_FindsNested(t *testing.T) {
 	rf.includeLower = []string{"*.jpg"}
 	// Ensure cache condition variable is initialized for tests that call pickRandomFile directly.
 	rf.cacheCond = sync.NewCond(&rf.cacheMu)
-	rf.cacheReady = true
 
 	selected, err := rf.pickRandomFile(root)
 	if err != nil {
@@ -84,7 +83,6 @@ func TestPickRandomFile_Cache_TTL(t *testing.T) {
 	rf := &RandomFile{Root: root, Include: []string{"*.jpg"}, Cache: caddy.Duration(200 * time.Millisecond)}
 	rf.includeLower = []string{"*.jpg"}
 	rf.cacheCond = sync.NewCond(&rf.cacheMu)
-	rf.cacheReady = true
 
 	selected1, err := rf.pickRandomFile(root)
 	if err != nil {
