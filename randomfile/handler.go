@@ -42,10 +42,11 @@ func (rf *RandomFile) Provision(ctx caddy.Context) error {
 }
 
 func (rf *RandomFile) initIncludeLower() {
-	rf.includeLower = rf.includeLower[:0]
+	patterns := make([]string, 0, len(rf.Include))
 	for _, p := range rf.Include {
-		rf.includeLower = append(rf.includeLower, strings.ToLower(filepath.ToSlash(p)))
+		patterns = append(patterns, strings.ToLower(filepath.ToSlash(p)))
 	}
+	rf.includeLower = patterns
 }
 
 func (rf *RandomFile) Validate() error {
@@ -117,10 +118,6 @@ func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
 		}
 		rf.cacheMu.Unlock()
 	}
-	if len(rf.includeLower) == 0 && len(rf.Include) > 0 {
-		rf.initIncludeLower()
-	}
-
 	ttl := time.Duration(rf.Cache)
 	if ttl <= 0 {
 		return rf.scanCandidates(dir)
@@ -172,7 +169,7 @@ func (rf *RandomFile) getCandidates(dir string) ([]string, error) {
 }
 
 func (rf *RandomFile) candidateCacheKey(dir string) string {
-	inc := strings.Join(rf.includeLower, "\x00")
+	inc := strings.Join(rf.includePatterns(), "\x00")
 	return fmt.Sprintf("dir=%s\x1frecursive=%t\x1finclude=%s", dir, rf.Recursive, inc)
 }
 
@@ -249,13 +246,14 @@ func (rf *RandomFile) scanCandidates(dir string) ([]string, error) {
 }
 
 func (rf *RandomFile) matchInclude(relPath string) bool {
-	if len(rf.includeLower) == 0 {
+	patterns := rf.includePatterns()
+	if len(patterns) == 0 {
 		return true
 	}
 
 	name := strings.ToLower(relPath)
 	name = filepath.ToSlash(name)
-	for _, pattern := range rf.includeLower {
+	for _, pattern := range patterns {
 		ok, err := filepath.Match(pattern, name)
 		if err != nil {
 			// Invalid pattern: ignore it and continue (treat as non-match).
@@ -266,6 +264,21 @@ func (rf *RandomFile) matchInclude(relPath string) bool {
 		}
 	}
 	return false
+}
+
+func (rf *RandomFile) includePatterns() []string {
+	if len(rf.Include) == 0 {
+		return nil
+	}
+	if len(rf.includeLower) != 0 {
+		return rf.includeLower
+	}
+
+	patterns := make([]string, 0, len(rf.Include))
+	for _, p := range rf.Include {
+		patterns = append(patterns, strings.ToLower(filepath.ToSlash(p)))
+	}
+	return patterns
 }
 
 func cryptoRandIndex(n int) (int, error) {
