@@ -28,6 +28,11 @@ func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error)
 					return nil, h.ArgErr()
 				}
 				rf.Include = append(rf.Include, args...)
+			case "recursive":
+				rf.Recursive = true
+				if h.NextArg() {
+					return nil, h.ArgErr()
+				}
 			default:
 				return nil, fmt.Errorf("unknown subdirective %q", h.Val())
 			}

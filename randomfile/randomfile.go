@@ -28,6 +28,10 @@ type RandomFile struct {
 	// Matching is case-insensitive.
 	Include []string `json:"include,omitempty"`
 
+	// Recursive enables scanning subdirectories under Root.
+	//
+	// Default is false to preserve existing behavior.
+	Recursive bool `json:"recursive,omitempty"`
 
 	logger *zap.Logger
 

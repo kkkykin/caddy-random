@@ -72,31 +72,69 @@ func (rf *RandomFile) resolveTargetDir(root string, _ *http.Request) (string, er
 }
 
 func (rf *RandomFile) pickRandomFile(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", err
-	}
-
 	var candidates []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+
+	if rf.Recursive {
+		walkFn := func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				// Ignore entries we can't access; keep scanning others.
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			if !info.Mode().IsRegular() {
+				return nil
+			}
+
+			rel, err := filepath.Rel(dir, path)
+			if err != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			name := filepath.Base(rel)
+			if !rf.matchInclude(rel) && !rf.matchInclude(name) {
+				return nil
+			}
+
+			candidates = append(candidates, path)
+			return nil
 		}
 
-		info, err := entry.Info()
+		if err := filepath.WalkDir(dir, walkFn); err != nil {
+			return "", err
+		}
+	} else {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
-		}
-		if !info.Mode().IsRegular() {
-			continue
+			return "", err
 		}
 
-		name := entry.Name()
-		rel := filepath.ToSlash(name)
-		if !rf.matchInclude(rel) {
-			continue
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+
+			name := entry.Name()
+			rel := filepath.ToSlash(name)
+			if !rf.matchInclude(rel) {
+				continue
+			}
+			candidates = append(candidates, filepath.Join(dir, name))
 		}
-		candidates = append(candidates, filepath.Join(dir, name))
 	}
 
 	if len(candidates) == 0 {
