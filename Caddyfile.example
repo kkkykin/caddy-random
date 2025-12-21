@@ -1,5 +1,5 @@
 {
-	order random_file before reverse_proxy
+	# order random_file before reverse_proxy
     # admin off
     # debug
 }

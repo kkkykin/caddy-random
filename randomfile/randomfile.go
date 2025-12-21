@@ -14,6 +14,7 @@ import (
 func init() {
 	caddy.RegisterModule(RandomFile{})
 	httpcaddyfile.RegisterHandlerDirective("random_file", parseCaddyfile)
+	httpcaddyfile.RegisterDirectiveOrder("random_file", "before", "reverse_proxy")
 }
 
 // RandomFile is an HTTP handler that responds by choosing a random file from a
